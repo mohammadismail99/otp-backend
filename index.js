@@ -4,6 +4,7 @@ const nodemailer = require("nodemailer");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const crypto = require("crypto");
+const axios = require("axios"); // ✅ Required for pinging
 
 const app = express();
 app.use(cors());
@@ -79,6 +80,13 @@ app.post("/verify-otp", (req, res) => {
   otpStore.delete(email); // Clean up after successful verification
   res.json({ success: true });
 });
+
+// ✅ Keep firebase-listener awake every 10 minutes
+setInterval(() => {
+  axios.get("https://firebase-listener.onrender.com/")
+    .then(() => console.log("🔁 Pinged firebase-listener"))
+    .catch((err) => console.error("⚠️ Ping failed:", err.message));
+}, 10 * 60 * 1000); // 10 minutes
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
