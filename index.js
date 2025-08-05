@@ -88,6 +88,10 @@ setInterval(() => {
     .catch((err) => console.error("⚠️ Ping failed:", err.message));
 }, 10 * 60 * 1000); // 10 minutes
 
+app.get("/ping", (req, res) => {
+  res.json({ message: "OTP Server is awake" });
+});
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
