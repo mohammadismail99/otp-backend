@@ -5,7 +5,6 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 const crypto = require("crypto");
 const axios = require("axios");
-const admin = require("firebase-admin");
 
 const app = express();
 app.use(cors());
@@ -13,101 +12,113 @@ app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 3000;
 
-// In-memory OTP store
+// In-memory OTP store (consider Redis/DB in production)
 const otpStore = new Map();
 
-// 🔐 Initialize Firebase Admin
-const serviceAccount = require("./oil-change-830cf-461c11caa9af.json");
- // Replace with your path
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
-// ✉️ Configure nodemailer
+// Configure nodemailer
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
   secure: true,
   auth: {
     user: process.env.EMAIL,
-    pass: process.env.PASSWORD,
+    pass: process.env.PASSWORD, // Gmail app password
   },
 });
 
-// 🔢 Generate 6-digit OTP
+// Generate 6-digit OTP
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// 📤 Send OTP
+// Endpoint to send OTP
 app.post("/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
 
     const otp = generateOtp();
-    const expiresAt = Date.now() + 5 * 60 * 1000;
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
     otpStore.set(email, { otp, expiresAt });
 
     const mailOptions = {
       from: process.env.EMAIL,
       to: email,
-      subject: "🔐 Your OTP for Password Reset",
-      text: `Your OTP is: ${otp}. It will expire in 5 minutes.`,
+      subject: "🔐 Your OTP for Signup Verification",
+      text: `Your OTP code is: ${otp}. It will expire in 5 minutes.`,
     };
 
-    await transporter.sendMail(mailOptions);
-    res.json({ success: true });
+    try {
+      await transporter.sendMail(mailOptions);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("❌ Email sending failed:", err.message);
+      res.status(500).json({ error: "Failed to send OTP" });
+    }
+
   } catch (err) {
-    console.error("❌ Error sending OTP:", err.message);
-    res.status(500).json({ error: "Failed to send OTP" });
+    console.error("❌ Unexpected error in /send-otp:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// ✅ Verify OTP and update Firebase password
-app.post("/verify-otp", async (req, res) => {
+// Endpoint to verify OTP
+app.post("/verify-otp", (req, res) => {
   try {
     const { email, otp } = req.body;
-    if (!email || !otp) return res.status(400).json({ error: "Email and OTP required" });
+
+    if (!email || !otp) {
+      return res.status(400).json({ error: "Email and OTP are required" });
+    }
 
     const stored = otpStore.get(email);
-    if (!stored) return res.status(400).json({ error: "No OTP sent to this email" });
+
+    if (!stored) {
+      return res.status(400).json({ error: "No OTP sent to this email" });
+    }
+
     if (stored.expiresAt < Date.now()) {
       otpStore.delete(email);
       return res.status(400).json({ error: "OTP expired" });
     }
-    if (stored.otp !== otp) return res.status(400).json({ error: "Invalid OTP" });
 
-    // ✅ OTP is valid
-    otpStore.delete(email);
+    if (stored.otp !== otp) {
+      return res.status(400).json({ error: "Invalid OTP" });
+    }
 
-    // 🔁 Get user and update password
-    const userRecord = await admin.auth().getUserByEmail(email);
+    otpStore.delete(email); // Clean up after verification
+    res.json({ success: true });
 
-    await admin.auth().updateUser(userRecord.uid, {
-      password: "T3mp@123!", // You can change this password
-    });
-
-    res.json({ success: true, message: "OTP verified. Password has been reset to temporary password. Please login and change it." });
   } catch (err) {
-    console.error("❌ OTP verification error:", err.message);
-    res.status(500).json({ error: "OTP verification failed" });
+    console.error("❌ Unexpected error in /verify-otp:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// 🌐 Keep-alive ping
+// Keep firebase-listener awake every 10 minutes
 setInterval(() => {
   axios.get("https://firebase-listener.onrender.com/")
     .then(() => console.log("🔁 Pinged firebase-listener"))
     .catch((err) => console.error("⚠️ Ping failed:", err.message));
 }, 10 * 60 * 1000);
 
-// 🚦 Health check
+// Health check endpoint
 app.get("/ping", (req, res) => {
-  res.json({ message: "OTP Server is awake" });
+  try {
+    res.json({ message: "OTP Server is awake" });
+  } catch (err) {
+    res.status(500).json({ error: "Ping failed" });
+  }
 });
 
-// 🚀 Start server
+// Start server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  try {
+    console.log(`✅ Server running on http://localhost:${PORT}`);
+  } catch (err) {
+    console.error("❌ Server failed to start:", err.message);
+  }
 });
