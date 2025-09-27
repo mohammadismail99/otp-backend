@@ -17,12 +17,12 @@ const otpStore = new Map();
 
 // Configure nodemailer
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
+  host: "smtp-relay.brevo.com",
+  port: 587,
+  secure: false,
   auth: {
-    user: "car00ilchange@gmail.com",
-    pass: 'vkzg mfat fdid qqog', // Gmail app password
+    user: "97fbcf001@smtp-brevo.com",
+    pass: 'FN8MHAE4cj2CKWZG', // Gmail app password
   },
 });
 
@@ -45,7 +45,7 @@ app.post("/send-otp", async (req, res) => {
     otpStore.set(email, { otp, expiresAt });
 
     const mailOptions = {
-      from: process.env.EMAIL,
+      from: "car00ilchange@gmail.com",
       to: email,
       subject: "🔐 Your OTP for Signup Verification",
       text: `Your OTP code is: ${otp}. It will expire in 5 minutes.`,
