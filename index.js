@@ -18,8 +18,8 @@ const otpStore = new Map();
 // Configure nodemailer
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+  port: 456,
+  secure: true,
   auth: {
     user: "car00ilchange@gmail.com",
     pass: 'vkzg mfat fdid qqog', // Gmail app password
