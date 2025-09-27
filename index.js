@@ -1,10 +1,10 @@
 require("dotenv").config();
 const express = require("express");
-const nodemailer = require("nodemailer");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const crypto = require("crypto");
 const axios = require("axios");
+const SibApiV3Sdk = require("sib-api-v3-sdk");
 
 const app = express();
 app.use(cors());
@@ -15,16 +15,11 @@ const PORT = process.env.PORT || 10000;
 // In-memory OTP store (consider Redis/DB in production)
 const otpStore = new Map();
 
-// Configure nodemailer
-const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: "97fbcf001@smtp-brevo.com",
-    pass: 'FN8MHAE4cj2CKWZG', // Gmail app password
-  },
-});
+// 🔑 Configure Brevo API
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+let apiKey = defaultClient.authentications["api-key"];
+apiKey.apiKey = process.env.BREVO_API_KEY;
+const tranEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
 // Generate 6-digit OTP
 function generateOtp() {
@@ -44,21 +39,22 @@ app.post("/send-otp", async (req, res) => {
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
     otpStore.set(email, { otp, expiresAt });
 
-    const mailOptions = {
-      from: "car00ilchange@gmail.com",
-      to: email,
-      subject: "🔐 Your OTP for Signup Verification",
-      text: `Your OTP code is: ${otp}. It will expire in 5 minutes.`,
-    };
+    const sender = { email: "car00ilchange@gmail.com", name: "CarOil App" }; // must be verified in Brevo
+    const receivers = [{ email }];
 
     try {
-      await transporter.sendMail(mailOptions);
+      await tranEmailApi.sendTransacEmail({
+        sender,
+        to: receivers,
+        subject: "🔐 Your OTP for Signup Verification",
+        textContent: `Your OTP code is: ${otp}. It will expire in 5 minutes.`,
+      });
+
       res.json({ success: true });
     } catch (err) {
       console.error("❌ Email sending failed:", err.message);
       res.status(500).json({ error: "Failed to send OTP" });
     }
-
   } catch (err) {
     console.error("❌ Unexpected error in /send-otp:", err.message);
     res.status(500).json({ error: "Internal server error" });
@@ -91,7 +87,6 @@ app.post("/verify-otp", (req, res) => {
 
     otpStore.delete(email); // Clean up after verification
     res.json({ success: true });
-
   } catch (err) {
     console.error("❌ Unexpected error in /verify-otp:", err.message);
     res.status(500).json({ error: "Internal server error" });
@@ -100,7 +95,8 @@ app.post("/verify-otp", (req, res) => {
 
 // Keep firebase-listener awake every 10 minutes
 setInterval(() => {
-  axios.get("https://firebase-listener.onrender.com/")
+  axios
+    .get("https://firebase-listener.onrender.com/")
     .then(() => console.log("🔁 Pinged firebase-listener"))
     .catch((err) => console.error("⚠️ Ping failed:", err.message));
 }, 10 * 60 * 1000);
@@ -115,7 +111,7 @@ app.get("/ping", (req, res) => {
 });
 
 // Start server
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, "0.0.0.0", () => {
   try {
     console.log(`✅ Server running on http://localhost:${PORT}`);
   } catch (err) {
